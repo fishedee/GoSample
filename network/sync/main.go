@@ -16,13 +16,14 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/twinj/uuid"
 	"mime/multipart"
 	"path/filepath"
 )
 
 type Config struct{
 	TargetPhone string
-	TargetClassify string
+	TargetClassify int
 	TargetName string
 	SourceRecipeId int
 }
@@ -98,7 +99,7 @@ func getConfigFromTxt( fileName string )([]*Config,error){
         	result,
         	&Config{
         		TargetPhone:lineSplit[0],
-        		TargetClassify:lineSplit[1],
+        		TargetClassify:Atoi(lineSplit[1]),
         		TargetName:lineSplit[3],
         		SourceRecipeId:Atoi(lineSplit[2]),
         	},
@@ -143,7 +144,52 @@ func getRecipeFromHonbeibang(contentId int)(*Recipe,error){
 		return nil,error;
 	}
 
+	var recipe = result.Data.Recipe
+	recipe.Image,error = saveImage( recipe.Image )
+	if error != nil{
+		return nil,error
+	}
+	for index,singleStep := range recipe.Step{
+		recipe.Step[index].Image,error = saveImage( singleStep.Image )
+		recipe.Step[index].Text = strings.Replace(singleStep.Text,"\n","",-1)
+		if error != nil{
+			return nil,error
+		}
+	}
+
 	return result.Data.Recipe,nil;
+}
+
+func saveImage(image string)(string,error){
+	if image == ""{
+		return "",nil
+	}
+
+	var number = uuid.NewV4();
+	var newImage = "download/"+uuid.Formatter(number, uuid.CurlyHyphen);
+	out,error := os.Create(newImage)
+	if error != nil{
+		return "",error
+	}
+	defer out.Close()
+
+	response,error := http.Get(image)
+	if error != nil{
+		return "",error
+	}
+	defer response.Body.Close()
+
+	pix,error := ioutil.ReadAll(response.Body)
+	if error != nil{
+		return "",error
+	}
+
+	_,error = io.Copy(out,bytes.NewReader(pix))
+	if error != nil{
+		return "",error
+	}
+
+	return newImage,nil
 }
 
 func getThereXSRFToken(data string,query string)(string,error){
@@ -299,7 +345,7 @@ type JsonTopic struct{
 
 
 func getTopicId(client* http.Client,title string)(int,error){
-	for i := 1 ; i <= 5 ; i++{
+	for i := 5 ; i >= 1 ; i--{
 		result,error := apiThere(client,"GET","http://lamsoon.solomochina.com/api/topic?page=1&top_category_id=6",nil)
 		if error != nil{
 			return 0,error
@@ -385,7 +431,7 @@ func postComment(client* http.Client,topicId int,content string,image string)(er
 	return nil;
 }
 
-func uploadRecipeToThere(recipe *Recipe,phone string,classify string,name string)(error){
+func uploadRecipeToThere(recipe *Recipe,phone string,classify int,name string)(error){
     jar, error := cookiejar.New(nil)
     if error != nil {
     	return error;
@@ -397,37 +443,46 @@ func uploadRecipeToThere(recipe *Recipe,phone string,classify string,name string
 		return error
 	}
 
-	error = loginVirtual(client,"13988888888");
+	error = loginVirtual(client,phone);
 	if error != nil{
 		return error
 	}
 
-	error = postTopic(client,9,"标题1","内容1","test.jpg")
+	content := recipe.Summary+"\n\n";
+	content += "材料\n";
+	for _,singleMaterial := range recipe.Material{
+		content += singleMaterial.Name + "：" + singleMaterial.Weight+"\n";
+	}
+	error = postTopic(client,classify,name,content,recipe.Image)
 	if error != nil{
 		return error
 	}
 
-	id,error := getTopicId(client,"标题1")
+	id,error := getTopicId(client,name)
 	if error != nil{
 		return error
 	}
 
-	error = postComment(client,id,"回复1\n测试2","test.jpg");
-	if error != nil{
-		return error
+	for index,singleStep := range recipe.Step{
+		text := Itoa(index+1) + ". "+singleStep.Text;
+		error = postComment(client,id,text,singleStep.Image);
+		if error != nil{
+			return error
+		}
 	}
 
-	error = postComment(client,id,"回复3\n测试4","test.jpg");
+	error = postComment(client,id,recipe.Tip,"");
 	if error != nil{
 		return error
 	}
+	
 	return nil;
 }
 
 func main(){
 	config,error := getConfigFromTxt("sync.txt");
 	if error != nil{
-		fmt.Println("读取配置文件失败");
+		fmt.Println("读取配置文件失败"+error.Error());
 		return;
 	}
 	fmt.Println("配置文件数据量：",len(config));
