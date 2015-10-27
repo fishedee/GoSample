@@ -1,0 +1,16 @@
+{
+	"listen":3007,
+	"log_file":"access.log",
+	"location":[
+		{
+			"url":"/test",
+			"proxy":"localhost:3001",
+			"timeout":5000
+		},
+		{
+			"url":"/",
+			"proxy":"localhost:3001",
+			"timeout":5000
+		}
+	]
+}
