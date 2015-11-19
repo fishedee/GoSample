@@ -345,21 +345,23 @@ type JsonTopic struct{
 
 
 func getTopicId(client* http.Client,title string)(int,error){
-	for i := 5 ; i >= 1 ; i--{
-		result,error := apiThere(client,"GET","http://lamsoon.solomochina.com/api/topic?page=1&top_category_id=6",nil)
-		if error != nil{
-			return 0,error
-		}
+	for i := 10 ; i >= 0 ; i--{
+		for i := 5 ; i >= 1 ; i--{
+			result,error := apiThere(client,"GET","http://lamsoon.solomochina.com/api/topic?page="+strconv.Itoa(i)+"&top_category_id=6",nil)
+			if error != nil{
+				return 0,error
+			}
 
-		var jsonTopic *JsonTopic;
-		error = json.Unmarshal([]byte(result),&jsonTopic)
-		if error != nil{
-			return 0,error
-		}
+			var jsonTopic *JsonTopic;
+			error = json.Unmarshal([]byte(result),&jsonTopic)
+			if error != nil{
+				return 0,error
+			}
 
-		for _,value := range jsonTopic.TopicList.Data{
-			if value.Title == title{
-				return value.Id,nil;
+			for _,value := range jsonTopic.TopicList.Data{
+				if value.Title == title{
+					return value.Id,nil;
+				}
 			}
 		}
 	}
@@ -443,10 +445,14 @@ func uploadRecipeToThere(recipe *Recipe,phone string,classify int,name string)(e
 		return error
 	}
 
+	time.Sleep(5*time.Second);
+
 	error = loginVirtual(client,phone);
 	if error != nil{
 		return error
 	}
+
+	time.Sleep(5*time.Second);
 
 	content := recipe.Summary+"\n\n";
 	content += "材料\n";
@@ -458,10 +464,14 @@ func uploadRecipeToThere(recipe *Recipe,phone string,classify int,name string)(e
 		return error
 	}
 
+	time.Sleep(5*time.Minute);
+
 	id,error := getTopicId(client,name)
 	if error != nil{
 		return error
 	}
+
+	time.Sleep(5*time.Second);
 
 	for index,singleStep := range recipe.Step{
 		text := Itoa(index+1) + ". "+singleStep.Text;
@@ -469,12 +479,15 @@ func uploadRecipeToThere(recipe *Recipe,phone string,classify int,name string)(e
 		if error != nil{
 			return error
 		}
+		time.Sleep(5*time.Second);
 	}
 
 	error = postComment(client,id,recipe.Tip,"");
 	if error != nil{
 		return error
 	}
+
+	time.Sleep(5*time.Second);
 	
 	return nil;
 }
